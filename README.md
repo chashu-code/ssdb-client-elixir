@@ -29,8 +29,8 @@ If [available in Hex](https://hex.pm/docs/publish), the package can be installed
 
 ## API
 
-  SSDB.query ["del", "a"]
-  # result: ["ok", "1"]
-
-  SSDB.query ["errorcmd"]
-  #["client_error", "Unknown Command: errorcmd"]
+    SSDB.query ["del", "a"]
+    # result: ["ok", "1"]
+  
+    SSDB.query ["errorcmd"]
+    # result: ["client_error", "Unknown Command: errorcmd"]
