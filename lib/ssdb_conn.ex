@@ -80,22 +80,27 @@ defmodule SSDBConn do
   def parse_recv(%SSDBConnInfo{step: @step_data, data: data, size: size, reply: reply}=state, data_recv) do
     if byte_size(data_recv) > 0, do: data = data <> data_recv
 
-    case data do
-      <<msg :: bytes-size(size), "\n\n" :: bytes, data_rest :: bytes >> ->
-        case data_rest do
-          <<>> ->
-            reply = :lists.reverse [msg | reply]
-            state = %{state | step: @step_finish, size: 0, data: <<>>, reply: reply}
-          _ ->
-            Lager.error "ssdb conn parse recv error"
-            :error
-        end
-      <<msg :: bytes-size(size), "\n" :: bytes, data_rest :: bytes >> ->
-        reply = [msg | reply]
-        state = %{state | step: @step_size, size: 0, data: data_rest, reply: reply}
-        parse_recv state, ""
-      _ ->
-        %{state | data: data}
+    size_recv = byte_size(data)
+
+    if size_recv >= size + 2 do
+      # recv \n\n or \n+"size"
+      case data do
+        <<msg :: bytes-size(size), "\n\n" :: bytes, data_rest :: bytes >> ->
+          case data_rest do
+            <<>> ->
+              reply = :lists.reverse [msg | reply]
+              state = %{state | step: @step_finish, size: 0, data: <<>>, reply: reply}
+            _ ->
+              Lager.error "ssdb conn parse recv error"
+              :error
+          end
+        <<msg :: bytes-size(size), "\n" :: bytes, data_rest :: bytes >> ->
+          reply = [msg | reply]
+          state = %{state | step: @step_size, size: 0, data: data_rest, reply: reply}
+          parse_recv state, ""
+      end
+    else
+      %{state | data: data}
     end
   end
 
