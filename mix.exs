@@ -14,10 +14,15 @@ defmodule SSDB.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [
-      applications: [:exlager],
-      mod: {SSDB, []}
-    ]
+    apps = [:exlager]
+    mod = {:mod, {SSDB, []} }
+
+    case Mix.env do
+      :test ->
+        [{:applications, apps}]
+      _ ->
+        [{:applications, apps}, mod]
+    end
   end
 
   # Dependencies can be Hex packages:

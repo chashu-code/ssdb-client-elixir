@@ -24,13 +24,12 @@ If [available in Hex](https://hex.pm/docs/publish), the package can be installed
           host: "127.0.0.1",
           port: 6380,
           pool_size: 5,
-          password: nil,
-          is_reconnect: true
+          password: nil
 
 ## API
 
     SSDB.query ["del", "a"]
     # result: ["ok", "1"]
-  
+
     SSDB.query ["errorcmd"]
     # result: ["client_error", "Unknown Command: errorcmd"]

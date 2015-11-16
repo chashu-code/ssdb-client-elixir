@@ -9,8 +9,7 @@ defmodule SSDBPoolTest do
       @host,
       @port,
       5,    # pool_size
-      nil,  # password
-      true  # reconnect
+      nil  # password
     )
 
     :ok

@@ -2,22 +2,24 @@ require Lager
 
 defmodule SSDBPoolInfo do
   defstruct host: '127.0.0.1', port: 8888, password: nil,
-            pool_size: 5, is_reconnect: false, conn_pools: :queue.new
+            pool_size: 5, has_reconnected: false, conn_pools: :queue.new
 end
 
 defmodule SSDBPool do
   use GenServer
 
-  def start_link(host, port, pool_size, password \\ nil, is_reconnect \\ false) do
-    GenServer.start_link(__MODULE__, {host, port, pool_size, password, is_reconnect}, [name: :ssdb_pool])
+  @reconnect_delay_ms 3000
+
+  def start_link(host, port, pool_size, password \\ nil) do
+    GenServer.start_link(__MODULE__, {host, port, pool_size, password}, [name: :ssdb_pool])
   end
 
-  def init({host, port, pool_size, password, is_reconnect}) do
+  def init({host, port, pool_size, password}) do
     :erlang.process_flag(:trap_exit, true)
     conn_pools = start_pools host, port, password, pool_size
     state = %SSDBPoolInfo{
       host: host, port: port, password: password, pool_size: pool_size,
-      is_reconnect: is_reconnect, conn_pools: conn_pools
+      conn_pools: conn_pools
     }
     {:ok, state}
   end
@@ -36,23 +38,29 @@ defmodule SSDBPool do
     end
   end
 
-  def handle_info({:EXIT, conn, reason}, %SSDBPoolInfo{conn_pools: conn_pools, is_reconnect: is_reconnect}=state) do
+  def handle_info({:EXIT, conn, reason}, %SSDBPoolInfo{conn_pools: conn_pools, has_reconnected: has_reconnected}=state) do
     Lager.error "ssdb conn(~p) EXIT, reason: ~p", [conn, reason]
     conn_pools = (fn(c)-> c != conn end) |> :queue.filter conn_pools
-    state = %{state | conn_pools: conn_pools}
 
-    if is_reconnect, do: send self, :reconnect
+    unless has_reconnected do
+      :erlang.send_after(@reconnect_delay_ms, self, :reconnect)
+      has_reconnected = true
+    end
+
+    state = %{state | conn_pools: conn_pools, has_reconnected: has_reconnected}
 
     {:noreply, state}
   end
 
   def handle_info(:reconnect, %SSDBPoolInfo{conn_pools: conn_pools, pool_size: pool_size}=state) do
-    Lager.info "ssdb reconnect"
+    Lager.info "ssdb reconnecting.."
     reconnect_size = pool_size - :queue.len(conn_pools)
     if reconnect_size > 0 do
       conn_pools = start_pools(state.host, state.port, state.password, reconnect_size, conn_pools)
-      state = %{state | conn_pools: conn_pools}
     end
+
+    state = %{state | conn_pools: conn_pools, has_reconnected: false}
+
     {:noreply, state}
   end
 
@@ -65,17 +73,17 @@ defmodule SSDBPool do
   end
 
   def start_pools(host, port, password, pool_size, pools \\ :queue.new) do
-    :lists.foldl(
-      fn(_, acc)->
-        {:ok, pid} = SSDBConn.start_link(host, port)
-        case password do
-          nil -> :ok
-          _ -> ["ok", "1"] = GenServer.call(pid, {:ssdb_query, [:auth, password]})
-        end
-        :queue.in pid, acc
-      end,
-      pools,
-      :lists.seq(1, pool_size)
-    )
+    (1..pool_size) |> Enum.reduce pools, fn(_, pools_new)->
+      case SSDBConn.start_link(host, port) do
+        {:ok, pid} ->
+          case password do
+            nil -> :ok
+            _ -> ["ok", "1"] = GenServer.call(pid, {:ssdb_query, [:auth, password]})
+          end
+          :queue.in(pid, pools_new)
+        error ->
+          pools_new
+      end
+    end
   end
 end

@@ -11,9 +11,8 @@ defmodule SSDBSup do
     port = Application.get_env(:ssdb, :port, 6380)
     pool_size = Application.get_env(:ssdb, :pool_size, 5)
     password = Application.get_env(:ssdb, :password, nil)
-    is_reconnect = Application.get_env(:ssdb, :is_reconnect, false)
 
-    pool_args = [host, port, pool_size, password, is_reconnect]
+    pool_args = [host, port, pool_size, password]
     children = [
       worker(SSDBPool, pool_args)
     ]
