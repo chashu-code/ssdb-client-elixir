@@ -1,12 +1,13 @@
 require Lager
 
 defmodule SSDBConnInfo do
-   defstruct socket: nil, step: 0, data: <<>>, size: 0, reply: [], from_list: []
+   defstruct socket: nil, step: 0, data: <<>>, size: 0, reply: [], from: nil, cmd: nil
 end
 
 defmodule SSDBConn do
   use GenServer
 
+  @pool :ssdb_pool
   @step_size 0
   @step_data 1
   @step_finish 2
@@ -25,10 +26,15 @@ defmodule SSDBConn do
         state = %SSDBConnInfo{
           socket: socket, step: @step_finish
         }
-        {:ok, state}
+        {:ok, state, 0}
       error ->
         {:stop, error}
     end
+  end
+
+  def handle_info(:timeout, state) do
+    send @pool, {:query_pull, self}
+    {:noreply, state}
   end
 
   def handle_info({:tcp_closed, socket}, state) do
@@ -43,9 +49,10 @@ defmodule SSDBConn do
 
   def handle_info({:tcp, socket, data}, state) do
     case parse_recv(state, data) do
-      %SSDBConnInfo{step: @step_finish, reply: reply, from_list: [{from, _} | from_list]}=new_state ->
+      %SSDBConnInfo{step: @step_finish, reply: reply, from: from}=new_state ->
         GenServer.reply from, reply
-        new_state = %{new_state | from_list: from_list, reply: []} |> send_query
+        send @pool, {:query_pull, self}
+        new_state = %{new_state | reply: []}
         {:noreply, new_state}
       %SSDBConnInfo{}=new_state ->
         {:noreply, new_state}
@@ -54,13 +61,19 @@ defmodule SSDBConn do
     end
   end
 
+  def handle_call({:query, cmd}, from, state) do
+    handle_info {:query, {from, cmd}}, state
+  end
 
-  def handle_info({:ssdb_query, from, cmd}, state) do
-    new_state = %{state | from_list: state.from_list ++ [{from, cmd}]}
+  def handle_info({:query, {from, cmd}}, state) do
+    new_state = %{state | from: from, cmd: cmd}
                 |> send_query
     {:noreply, new_state}
   end
 
+  def query(pid, cmd) do
+    GenServer.call pid, {:query, cmd}
+  end
 
   def parse_recv(%SSDBConnInfo{step: @step_size, data: data}=state, data_recv) do
     if byte_size(data_recv) > 0, do: data = data <> data_recv
@@ -106,7 +119,8 @@ defmodule SSDBConn do
 
   def send_query(%SSDBConnInfo{ step: @step_finish,
                                 socket: socket,
-                                from_list: [{_from, cmd} | _]
+                                from: from,
+                                cmd: cmd
                               }=state) do
     data = encode_cmd(cmd, "")
     :gen_tcp.send(socket, data)
