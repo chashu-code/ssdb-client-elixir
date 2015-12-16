@@ -53,11 +53,16 @@ defmodule SSDBPool do
   def clean_query(%{querys: {[],[]}}=state), do: state
   def clean_query(state) do
     {{:value, conn}, conns} = :queue.out state.conns
-    {{:value, query}, querys} = :queue.out state.querys
 
-    send conn, {:query, query}
+    state_new = case Process.alive?(conn) do
+      true ->
+        {{:value, query}, querys} = :queue.out state.querys
+        send conn, {:query, query}
+        %{state | conns: conns, querys: querys}
+      false ->
+        %{state | conns: conns}
+    end
 
-    state_new = %{state | conns: conns, querys: querys}
     clean_query(state_new)
   end
 
