@@ -5,7 +5,7 @@ defmodule SSDB do
     {:ok, _} = SSDBSup.start_link
   end
 
-  def query(cmd) when is_list(cmd) do
-    SSDBPool.query :ssdb_pool, cmd
+  def query(cmd, timeout \\ 5000) when is_list(cmd) do
+    SSDBPool.query :ssdb_pool, cmd, timeout
   end
 end

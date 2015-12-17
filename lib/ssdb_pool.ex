@@ -22,8 +22,8 @@ defmodule SSDBPool do
     {:ok, state, 0}
   end
 
-  def query(pid, cmd) do
-    GenServer.call pid, {:query_push, cmd}
+  def query(pid, cmd, timeout \\ 5000) do
+    GenServer.call pid, {:query_push, cmd}, timeout
   end
 
   def handle_info(:timeout, state) do
